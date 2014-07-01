@@ -40,6 +40,7 @@ type assignment struct {
 type stackAssignment struct {
 	atom  Atom
 	value bool
+	branching bool
 }
 
 type assignments struct {
@@ -86,13 +87,16 @@ func (assignments *assignments) GetFirstUnassigned() (Atom, bool) {
 	return Atom(0), false
 }
 
-func (assignments *assignments) PushAssignment(atom Atom, value bool) bool {
-
-	// TODO this assumes that the atom is not already assigned!
+func (assignments *assignments) PushAssignment(atom Atom, value bool, branching bool) bool {
 
 	if uint64(atom) < assignments.stackMax {
+
+		if assignments.raa[uint64(atom)].assigned {
+			panic("Assignment to already assigned atom")
+		}
+
 		assignments.raa[uint64(atom)] = assignment{value, true}
-		assignments.stack[assignments.stackPointer] = stackAssignment{atom, value}
+		assignments.stack[assignments.stackPointer] = stackAssignment{atom, value, branching}
 		assignments.stackPointer++
 		return true
 	}
@@ -100,18 +104,18 @@ func (assignments *assignments) PushAssignment(atom Atom, value bool) bool {
 	return false
 }
 
-func (assignments *assignments) PopAssignment() (assignment, bool) {
+func (assignments *assignments) PopAssignment() (stackAssignment, bool) {
 
 	if assignments.stackPointer == 0 {
-		return assignment{}, false
+		return stackAssignment{}, false
 	}
 
 	assignments.stackPointer--
 
-	var atom = assignments.stack[assignments.stackPointer].atom
+	var last = assignments.stack[assignments.stackPointer]
 
-	assignments.raa[uint64(atom)].assigned = false
-	return assignments.raa[uint64(atom)], true
+	assignments.raa[uint64(last.atom)].assigned = false
+	return last, true
 }
 
 func (assignments *assignments) PartiallySatisfies(formula Formula) bool {
@@ -142,6 +146,56 @@ func (assignments *assignments) PartiallySatisfies(formula Formula) bool {
 
 }
 
+func (assignments *assignments) UnitProp(formula Formula) bool {
+
+	dirty := true
+
+	for dirty {
+
+		dirty = false
+
+		for _, clause := range formula {
+
+			lastUnassigned := Literal{}
+			numUnassigned := uint64(0)
+			isSatisfied := false
+
+			for _, literal := range clause {
+
+				var assignment = assignments.raa[uint64(literal.atom)]
+
+				if !assignment.assigned {
+					numUnassigned++
+					lastUnassigned = literal
+				} else {
+
+					isSatisfied =
+						isSatisfied ||
+						(literal.negated && !assignment.value) ||
+						(!literal.negated && assignment.value)
+
+				}
+
+			}
+
+			if numUnassigned == 1 && !isSatisfied {
+				// if clause is a unit clause and not satisfied, select and set dirty
+
+				assignments.PushAssignment(lastUnassigned.atom, !lastUnassigned.negated, false)
+				dirty = true
+
+			} else if (numUnassigned == 0 && !isSatisfied) {
+				// if clause is not satisfied, set conflict
+				
+				return true
+			}
+		}
+	}
+
+	return false
+
+}
+
 func Solve(formula Formula) (Solution, bool) {
 
 	var numAtoms = formula.NumAtoms()
@@ -164,14 +218,12 @@ func Solve(formula Formula) (Solution, bool) {
 			panic(fmt.Sprintf("Could not find an unassigned value, even though one should exist"))
 		}
 
-		assignments.PushAssignment(atom, forceAlternative)
+		assignments.PushAssignment(atom, forceAlternative, true)
 		forceAlternative = false
 
 		// deduce -- unit propagation
 
-		var conflict = false
-
-		// TODO
+		var conflict = assignments.UnitProp(formula)
 
 		// resolve - if we have a conflict
 
@@ -190,12 +242,13 @@ func Solve(formula Formula) (Solution, bool) {
 					return nil, false
 				}
 
-				if last.value == false {
+				if last.value == false && last.branching {
 					// We have backtracked to a false branch, stop and explore the true branch next iteration
-					forceAlternative = true
 					break
 				}
 			}
+
+			forceAlternative = true
 		}
 	}
 

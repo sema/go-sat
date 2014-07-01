@@ -54,3 +54,7 @@ func TestSolverOnSmallSatExamples(t *testing.T) {
 func TestSolverOnSmallUnsatExamples(t *testing.T) {
 	SatTester(t, "small/unsat", false)
 }
+
+func TestSolverOnHoos50SatExamples(t *testing.T) {
+	SatTester(t, "hoos/50/sat", true)
+}
