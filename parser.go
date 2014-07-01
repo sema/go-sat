@@ -1,103 +1,102 @@
-
 package main
 
 import (
-    "fmt"
-    "os"
-    "bufio"
-    "errors"
-    "strings"
-    "strconv"
+	"bufio"
+	"errors"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
 )
 
 func ParseBenchmarkFile(path string) (formula Formula, err error) {
 
-    // Open file
+	// Open file
 
-    file, err := os.Open(path)
-    if err != nil {
-        return 
-    }
-    defer file.Close()
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
 
-    // Scan file
+	// Scan file
 
-    var insertedClauses = 0
+	var insertedClauses = 0
 
-    var scanner = bufio.NewScanner(file)
-    for scanner.Scan() {
+	var scanner = bufio.NewScanner(file)
+	for scanner.Scan() {
 
-        var line = scanner.Text()
-        var ts = strings.Split(line, " ")
-        var tokens = make([]string, len(ts))
+		var line = scanner.Text()
+		var ts = strings.Split(line, " ")
+		var tokens = make([]string, len(ts))
 
-        // some benchmark sets inject random spaces.
-        // filter out all "empty" tokens
+		// some benchmark sets inject random spaces.
+		// filter out all "empty" tokens
 
-        var top = 0
-        for _, t := range ts {
-            if t != "" {
-                tokens[top] = t
-                top++
-            }
-        }
+		var top = 0
+		for _, t := range ts {
+			if t != "" {
+				tokens[top] = t
+				top++
+			}
+		}
 
-        tokens = tokens[:top]
+		tokens = tokens[:top]
 
-        if len(tokens) == 0 || tokens[0] == "c" || tokens[0] == "%" || tokens[0] == "0" {
-            continue // ignore blank lines or comments
+		if len(tokens) == 0 || tokens[0] == "c" || tokens[0] == "%" || tokens[0] == "0" {
+			continue // ignore blank lines or comments
 
-        } else if len(tokens) == 4 && tokens[0] == "p" && tokens[1] == "cnf" {
+		} else if len(tokens) == 4 && tokens[0] == "p" && tokens[1] == "cnf" {
 
-            var _, err1 = strconv.Atoi(tokens[2])
-            var numClauses, err2 = strconv.Atoi(tokens[3])
+			var _, err1 = strconv.Atoi(tokens[2])
+			var numClauses, err2 = strconv.Atoi(tokens[3])
 
-            if (err1 == nil && err2 == nil) {
-                formula = make(Formula, numClauses)
-                continue
-            }
+			if err1 == nil && err2 == nil {
+				formula = make(Formula, numClauses)
+				continue
+			}
 
-        } else if formula != nil {
+		} else if formula != nil {
 
-            var clause = make(Clause, len(tokens)-1)
-            
-            for i, token := range tokens {
+			var clause = make(Clause, len(tokens)-1)
 
-                var atom int
+			for i, token := range tokens {
 
-                atom, err = strconv.Atoi(token)
-                if err != nil {
-                    return
-                }
-                
-                var isNegated = false
-                if (atom < 0) {
-                    isNegated = true
-                    atom = atom * -1
-                }
+				var atom int
 
-                if (atom != 0) {
-                    var literal Literal
-                    literal.atom = Atom(atom)
-                    literal.negated = isNegated
+				atom, err = strconv.Atoi(token)
+				if err != nil {
+					return
+				}
 
-                    clause[i] = literal
-                }
+				var isNegated = false
+				if atom < 0 {
+					isNegated = true
+					atom = atom * -1
+				}
 
-            }
+				if atom != 0 {
+					var literal Literal
+					literal.atom = Atom(atom)
+					literal.negated = isNegated
 
-            formula[insertedClauses] = clause
-            insertedClauses++
+					clause[i] = literal
+				}
 
-            continue
-        }
+			}
 
-        err = errors.New(fmt.Sprint("Parsing error at line: ", line, "\n"))
-        return
-        
-    }
+			formula[insertedClauses] = clause
+			insertedClauses++
 
-    err = scanner.Err()
-    return
+			continue
+		}
+
+		err = errors.New(fmt.Sprint("Parsing error at line: ", line, "\n"))
+		return
+
+	}
+
+	err = scanner.Err()
+	return
 
 }
